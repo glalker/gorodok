@@ -1,0 +1,88 @@
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; overflow: hidden; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
+body { background: #7cb860; }
+
+/* экран входа */
+#join {
+  position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+  background: linear-gradient(160deg, #8ec770, #5d9e4a);
+  z-index: 30; padding: 16px;
+}
+.card {
+  background: #fffef8; border-radius: 20px; padding: 28px 26px;
+  width: 100%; max-width: 420px; box-shadow: 0 14px 50px rgba(0,0,0,.25);
+  display: flex; flex-direction: column; gap: 10px;
+}
+#join[hidden] { display: none; }
+.card h1 { font-size: 30px; text-align: center; }
+.tagline { text-align: center; color: #5a6b50; font-size: 14px; line-height: 1.4; margin-bottom: 6px; }
+.card input {
+  padding: 11px 13px; border: 2px solid #d8e2cf; border-radius: 10px;
+  font-size: 15px; width: 100%; background: #fff;
+}
+.card input:focus { outline: none; border-color: #6aa84f; }
+.room-row { display: flex; gap: 8px; }
+.rooms-online { font-size: 12px; color: #7a8a6f; min-height: 14px; }
+.card button {
+  padding: 12px; border: none; border-radius: 10px; font-size: 15px;
+  cursor: pointer; background: #e8efe0; color: #3c4a33;
+}
+.card button.primary { background: #5d9e4a; color: #fff; font-weight: 600; }
+.radius-row { font-size: 13px; color: #5a6b50; display: flex; align-items: center; gap: 8px; }
+.radius-row input { flex: 1; accent-color: #5d9e4a; }
+#radiusBar { display: flex; align-items: center; gap: 4px; font-size: 13px; }
+#radiusBar input { width: 70px; accent-color: #5d9e4a; }
+#radiusBarVal { color: #5a6b50; min-width: 26px; }
+.card button:hover { filter: brightness(1.05); }
+.hint { font-size: 12px; color: #93a188; text-align: center; }
+
+/* игра */
+#game { position: fixed; inset: 0; }
+#cv { display: block; width: 100%; height: 100%; touch-action: none; }
+
+#topbar {
+  position: fixed; top: 10px; left: 10px; right: 10px;
+  display: flex; align-items: center; gap: 10px;
+  background: rgba(255,255,255,.88); border-radius: 12px;
+  padding: 8px 12px; box-shadow: 0 3px 12px rgba(0,0,0,.15);
+  font-size: 14px; z-index: 10;
+}
+#roomLabel { font-weight: 700; }
+#onlineLabel { color: #5a6b50; flex: 1; }
+#topbar button {
+  border: none; background: #eef3e8; border-radius: 8px; padding: 6px 10px;
+  cursor: pointer; font-size: 13px;
+}
+#topbar button.on { background: #5d9e4a; color: #fff; }
+
+#log {
+  position: fixed; left: 10px; bottom: 64px; width: min(46vw, 330px);
+  display: flex; flex-direction: column; gap: 3px;
+  font-size: 12.5px; pointer-events: none; z-index: 5;
+}
+#log div {
+  background: rgba(255,255,255,.78); border-radius: 8px; padding: 4px 8px;
+  color: #2e3a27; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+#chatForm {
+  position: fixed; left: 10px; right: 10px; bottom: 12px; z-index: 10;
+  display: flex; justify-content: center;
+}
+#chatInput {
+  width: min(560px, 100%); padding: 11px 16px; font-size: 15px;
+  border: none; border-radius: 22px; background: rgba(255,255,255,.92);
+  box-shadow: 0 3px 12px rgba(0,0,0,.18);
+}
+#chatInput:focus { outline: 2px solid #5d9e4a; }
+
+#joystick {
+  position: fixed; left: 22px; bottom: 90px; width: 110px; height: 110px;
+  border-radius: 50%; background: rgba(255,255,255,.25);
+  border: 2px solid rgba(255,255,255,.5); z-index: 10; touch-action: none;
+}
+#stick {
+  position: absolute; left: 35px; top: 35px; width: 40px; height: 40px;
+  border-radius: 50%; background: rgba(255,255,255,.85);
+  box-shadow: 0 2px 6px rgba(0,0,0,.25);
+}

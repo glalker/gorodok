@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Городок — проксимити-чат</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div id="join">
+  <div class="card">
+    <h1>🏘️ Городок</h1>
+    <p class="tagline">Поле, стикмены и болтовня с теми, кто рядом.<br>Подойди ближе — услышишь. Отойди — тишина.</p>
+    <input id="nameInput" maxlength="24" placeholder="Имя (можно пусто — придумаем)">
+    <input id="statusInput" maxlength="90" placeholder="Статус, например: блондинка в синем, ищу с кем покатать">
+    <div class="room-row">
+      <input id="roomInput" maxlength="48" placeholder="Городок" list="roomList">
+      <datalist id="roomList"></datalist>
+    </div>
+    <div id="roomsOnline" class="rooms-online"></div>
+    <label class="radius-row">📢 Тебя слышно на <b><span id="radiusVal">8</span> м</b>
+      <input type="range" id="radiusInput" min="1" max="10" value="8">
+    </label>
+    <button id="joinBtn" class="primary">Зайти в городок</button>
+    <button id="geoBtn">📍 Городок рядом со мной</button>
+    <p class="hint">«Городок рядом» — комната по геолокации: соседи по дому, парку или району.</p>
+  </div>
+</div>
+
+<div id="game" hidden>
+  <canvas id="cv"></canvas>
+
+  <div id="topbar">
+    <span id="roomLabel"></span>
+    <span id="onlineLabel"></span>
+    <label id="radiusBar" title="На сколько метров тебя слышно">📢<input type="range" id="radiusBarInput" min="1" max="10" value="8"><span id="radiusBarVal">8м</span></label>
+    <button id="statusBtn" title="Сменить статус">💭 статус</button>
+    <button id="voiceBtn" title="Голосовой чат с теми, кто рядом">🎤 голос</button>
+    <button id="leaveBtn" title="Выйти">✖</button>
+  </div>
+
+  <div id="log"></div>
+
+  <form id="chatForm" autocomplete="off">
+    <input id="chatInput" maxlength="200" placeholder="Сказать что-нибудь… (Enter)">
+  </form>
+
+  <div id="joystick" hidden><div id="stick"></div></div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>

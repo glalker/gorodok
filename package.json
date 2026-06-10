@@ -1,0 +1,14 @@
+{
+  "name": "gorodok",
+  "version": "0.1.0",
+  "description": "Городок — проксимити-чат с видом сверху",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.0",
+    "ws": "^8.18.0",
+    "@anthropic-ai/sdk": "^0.39.0"
+  }
+}
