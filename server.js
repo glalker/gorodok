@@ -11,6 +11,11 @@ const MIN_RADIUS_M = 1;
 const MAX_RADIUS_M = 10;
 const DEFAULT_RADIUS_M = 8;   // насколько далеко тебя слышно
 const CLUSTER_RADIUS = 160;   // в пределах этого радиуса люди считаются одной группой
+const JUMP_MS = 650;          // длительность прыжка
+const THROW_SPEED = 480;      // скорость камня, px/s
+const THROW_MAX = 9 * 32;     // дальность броска — 9 м
+const THROW_COOLDOWN = 1100;  // пауза между бросками
+const STONE_HIT_R = 26;       // радиус попадания
 const TOPIC_INTERVAL = 7000;  // как часто пересчитываем группы и темы
 const CHAT_TTL = 90_000;      // сколько сообщения учитываются в теме беседы
 const DEFAULT_ROOM = 'Городок';
@@ -138,6 +143,8 @@ wss.on('connection', ws => {
         hue: Math.floor(Math.random() * 360),
         voice: false,
         radius: radiusPx(m.radius),
+        jumpUntil: 0,
+        lastThrow: 0,
         ws,
       };
       room.players.set(me.id, me);
@@ -170,6 +177,37 @@ wss.on('connection', ws => {
         me.radius = radiusPx(m.v);
         broadcast(room, { t: 'radius', id: me.id, v: me.radius });
         break;
+      case 'jump': {
+        const now = Date.now();
+        if (now < me.jumpUntil) break;
+        me.jumpUntil = now + JUMP_MS;
+        broadcast(room, { t: 'jump', id: me.id }, me.id);
+        break;
+      }
+      case 'throw': {
+        const now = Date.now();
+        if (now - me.lastThrow < THROW_COOLDOWN) break;
+        me.lastThrow = now;
+        let tx = clamp(+m.tx || 0, 0, WORLD.w);
+        let ty = clamp(+m.ty || 0, 0, WORLD.h);
+        const ddx = tx - me.x, ddy = ty - me.y;
+        const d = Math.hypot(ddx, ddy) || 1;
+        if (d > THROW_MAX) { tx = me.x + ddx / d * THROW_MAX; ty = me.y + ddy / d * THROW_MAX; }
+        const ms = Math.max(250, Math.round(Math.hypot(tx - me.x, ty - me.y) / THROW_SPEED * 1000));
+        const throwerId = me.id, theRoom = room;
+        broadcast(theRoom, { t: 'throw', id: throwerId, x0: me.x, y0: me.y, x1: tx, y1: ty, ms });
+        setTimeout(() => {
+          const landAt = Date.now();
+          for (const p of theRoom.players.values()) {
+            if (p.id === throwerId) continue;
+            if (Math.hypot(p.x - tx, p.y - ty) <= STONE_HIT_R) {
+              if (p.jumpUntil > landAt) broadcast(theRoom, { t: 'dodge', id: p.id, by: throwerId });
+              else broadcast(theRoom, { t: 'hit', id: p.id, by: throwerId, x: tx, y: ty });
+            }
+          }
+        }, ms);
+        break;
+      }
       case 'status':
         me.status = String(m.text || '').trim().slice(0, 90);
         broadcast(room, { t: 'status', id: me.id, text: me.status });

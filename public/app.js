@@ -9,6 +9,9 @@ let roomName = '';
 const players = new Map();   // id -> {id,name,status,x,y,hue,voice, rx,ry, anim, lastX,lastY}
 const bubbles = new Map();   // id -> {text, at}
 let clusters = [];           // [{ids,topic,x,y}]
+const stones = [];           // летящие камни [{x0,y0,x1,y1,ms,t0}]
+const effects = [];          // визуальные эффекты [{type,...,at}]
+let myStunnedUntil = 0;      // после попадания камнем — оглушение
 
 const $ = id => document.getElementById(id);
 const cv = $('cv');
@@ -114,6 +117,34 @@ function handleMsg(m) {
       if (p) p.radius = m.v;
       break;
     }
+    case 'jump': {
+      const p = players.get(m.id);
+      if (p) p.jumpStart = performance.now();
+      break;
+    }
+    case 'throw':
+      stones.push({ ...m, t0: performance.now() });
+      break;
+    case 'hit': {
+      const p = players.get(m.id);
+      const by = players.get(m.by);
+      if (p) p.hitAt = performance.now();
+      effects.push({ type: 'stars', id: m.id, at: performance.now() });
+      if (p && by) logLine(`🪨 ${by.name} попал в ${p.name}!`);
+      if (m.id === myId && p) {
+        myStunnedUntil = performance.now() + 800;
+        const d = Math.hypot(p.x - m.x, p.y - m.y) || 1;
+        p.x = Math.max(0, Math.min(world.w, p.x + (p.x - m.x) / d * 38));
+        p.y = Math.max(0, Math.min(world.h, p.y + (p.y - m.y) / d * 38));
+        ws.send(JSON.stringify({ t: 'move', x: p.x, y: p.y }));
+      }
+      break;
+    }
+    case 'dodge': {
+      const p = players.get(m.id);
+      if (p) logLine(`😎 ${p.name} увернулся в прыжке!`);
+      break;
+    }
     case 'clusters':
       clusters = m.clusters;
       break;
@@ -136,11 +167,23 @@ function startGame() {
   $('radiusBarInput').value = rm;
   $('radiusBarVal').textContent = rm + 'м';
   updateOnline();
-  if (isTouch) $('joystick').hidden = false;
+  if (isTouch) {
+    $('joystick').hidden = false;
+    $('jumpBtn').hidden = false;
+  }
+  logLine(isTouch
+    ? 'Тап по полю — бросить камень 🪨, кнопка ⬆️ — прыжок'
+    : 'Пробел — прыжок, клик по полю — бросить камень 🪨');
   resize();
   buildDecor();
   requestAnimationFrame(frame);
 }
+
+$('jumpBtn').addEventListener('pointerdown', e => {
+  e.preventDefault();
+  e.stopPropagation();
+  doJump();
+});
 
 function updateOnline() {
   $('onlineLabel').textContent = `онлайн: ${players.size}`;
@@ -171,6 +214,7 @@ addEventListener('keydown', e => {
     return;
   }
   if (e.key === 'Enter') { $('chatInput').focus(); e.preventDefault(); return; }
+  if (e.code === 'Space') { doJump(); e.preventDefault(); return; }
   const dir = KEYMAP[e.code];
   if (dir) { keys[dir] = true; e.preventDefault(); }
 });
@@ -201,10 +245,30 @@ function joyMove(e) {
   stick.style.top = (35 + dy) + 'px';
 }
 
+// ---------- прыжок и камни ----------
+function doJump() {
+  const p = me();
+  if (!p || !ws) return;
+  if (p.jumpStart && performance.now() - p.jumpStart < 650) return;
+  p.jumpStart = performance.now();
+  ws.send(JSON.stringify({ t: 'jump' }));
+}
+
+let lastThrowSent = -9999;
+cv.addEventListener('pointerdown', e => {
+  if (!myId) return;
+  const now = performance.now();
+  if (now - lastThrowSent < 1100) return;
+  lastThrowSent = now;
+  const { cx, cy } = camera();
+  ws.send(JSON.stringify({ t: 'throw', tx: e.clientX + cx, ty: e.clientY + cy }));
+});
+
 let lastSent = 0;
 function updateMovement(dt) {
   const p = me();
   if (!p) return;
+  if (performance.now() < myStunnedUntil) return; // оглушён камнем
   let dx = (keys.right ? 1 : 0) - (keys.left ? 1 : 0);
   let dy = (keys.down ? 1 : 0) - (keys.up ? 1 : 0);
   dx += joyVec.x; dy += joyVec.y;
@@ -469,6 +533,9 @@ function draw(t) {
   const sorted = [...players.values()].sort((a, b) => a.ry - b.ry);
   for (const p of sorted) drawPlayer(p, t);
 
+  drawStones(t);
+  drawEffects(t);
+
   // темы групп
   for (const c of clusters) {
     if (!c.topic) continue;
@@ -516,37 +583,53 @@ function drawPond(d) {
 }
 
 function drawPlayer(p, t) {
-  const x = p.rx, y = p.ry;
+  const x = p.rx;
   const my = me();
-  const d = my ? Math.hypot(x - my.rx, y - my.ry) : 0;
+  const d = my ? Math.hypot(x - my.rx, p.ry - my.ry) : 0;
   const R = p.radius || 8 * METER; // радиус говорящего: слышно ли МНЕ его
   const far = d > R;
   const alpha = p.id === myId ? 1 : (far ? 0.55 : 1);
 
+  // высота прыжка
+  let z = 0;
+  if (p.jumpStart) {
+    const jk = (t - p.jumpStart) / 650;
+    if (jk < 1) z = Math.sin(Math.PI * jk) * 26;
+    else p.jumpStart = 0;
+  }
+  const y = p.ry - z;       // тело в воздухе
+  const gy = p.ry;          // тень на земле
+
   ctx.save();
   ctx.globalAlpha = alpha;
 
-  // тень
+  // тень (меньше в прыжке)
   ctx.beginPath();
   ctx.fillStyle = 'rgba(0,0,0,.18)';
-  ctx.ellipse(x, y + 2, 12, 5, 0, 0, Math.PI * 2);
+  ctx.ellipse(x, gy + 2, Math.max(6, 12 - z * 0.2), Math.max(3, 5 - z * 0.08), 0, 0, Math.PI * 2);
   ctx.fill();
 
   // стикмен
   const c = `hsl(${p.hue} 55% 30%)`;
   const swing = Math.sin(p.anim) * 7;
+  const legSpread = z > 2 ? 9 : 6; // в прыжке ноги поджаты в стороны
   ctx.strokeStyle = c;
   ctx.lineWidth = 3;
   ctx.lineCap = 'round';
   // ноги
   ctx.beginPath();
-  ctx.moveTo(x, y - 14); ctx.lineTo(x - 6 + swing * 0.5, y);
-  ctx.moveTo(x, y - 14); ctx.lineTo(x + 6 - swing * 0.5, y);
+  ctx.moveTo(x, y - 14); ctx.lineTo(x - legSpread + swing * 0.5, y - (z > 2 ? 4 : 0));
+  ctx.moveTo(x, y - 14); ctx.lineTo(x + legSpread - swing * 0.5, y - (z > 2 ? 4 : 0));
   // тело
   ctx.moveTo(x, y - 14); ctx.lineTo(x, y - 30);
-  // руки
-  ctx.moveTo(x - 9, y - 22 + swing * 0.4); ctx.lineTo(x, y - 27);
-  ctx.lineTo(x + 9, y - 22 - swing * 0.4);
+  // руки (в прыжке — вверх)
+  if (z > 2) {
+    ctx.moveTo(x - 10, y - 34); ctx.lineTo(x, y - 27);
+    ctx.lineTo(x + 10, y - 34);
+  } else {
+    ctx.moveTo(x - 9, y - 22 + swing * 0.4); ctx.lineTo(x, y - 27);
+    ctx.lineTo(x + 9, y - 22 - swing * 0.4);
+  }
   ctx.stroke();
   // голова
   ctx.beginPath();
@@ -555,11 +638,18 @@ function drawPlayer(p, t) {
   ctx.fill();
   ctx.stroke();
 
+  // вспышка от попадания камнем
+  if (p.hitAt && t - p.hitAt < 450) {
+    ctx.font = '18px system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillText('💥', x + 10, y - 30);
+  }
+
   // имя
   ctx.font = '12px system-ui';
   ctx.textAlign = 'center';
   ctx.fillStyle = 'rgba(0,0,0,.75)';
-  ctx.fillText(p.name + (p.voice ? ' 🎤' : ''), x, y + 16);
+  ctx.fillText(p.name + (p.voice ? ' 🎤' : ''), x, gy + 16);
 
   // статус над головой
   let topY = y - 52;
@@ -613,6 +703,65 @@ function drawBubble(x, y, text) {
   ctx.fillStyle = '#222';
   ctx.textAlign = 'center';
   lines.forEach((l, i) => ctx.fillText(l, x, y - h + 18 + i * lh));
+}
+
+function drawStones(t) {
+  for (let i = stones.length - 1; i >= 0; i--) {
+    const s = stones[i];
+    const k = (t - s.t0) / s.ms;
+    if (k >= 1) {
+      effects.push({ type: 'puff', x: s.x1, y: s.y1, at: t });
+      stones.splice(i, 1);
+      continue;
+    }
+    const x = s.x0 + (s.x1 - s.x0) * k;
+    const y = s.y0 + (s.y1 - s.y0) * k;
+    const d = Math.hypot(s.x1 - s.x0, s.y1 - s.y0);
+    const h = Math.sin(Math.PI * k) * Math.min(70, d * 0.3) + 24; // дуга от руки
+    // тень камня
+    ctx.beginPath();
+    ctx.fillStyle = 'rgba(0,0,0,.15)';
+    ctx.ellipse(x, y, 5, 2.5, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // камень
+    ctx.beginPath();
+    ctx.fillStyle = '#8a8a8a';
+    ctx.arc(x, y - h, 5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#5c5c5c';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  }
+}
+
+function drawEffects(t) {
+  for (let i = effects.length - 1; i >= 0; i--) {
+    const e = effects[i];
+    const age = t - e.at;
+    if (e.type === 'puff') {
+      if (age > 350) { effects.splice(i, 1); continue; }
+      const k = age / 350;
+      ctx.beginPath();
+      ctx.strokeStyle = `rgba(110,95,75,${(1 - k).toFixed(2)})`;
+      ctx.lineWidth = 2;
+      ctx.arc(e.x, e.y, 4 + k * 14, 0, Math.PI * 2);
+      ctx.stroke();
+    } else if (e.type === 'stars') {
+      if (age > 1000) { effects.splice(i, 1); continue; }
+      const p = players.get(e.id);
+      if (!p) { effects.splice(i, 1); continue; }
+      const k = age / 1000;
+      ctx.globalAlpha = 1 - k;
+      ctx.font = '14px system-ui';
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#f5c542';
+      for (let j = 0; j < 3; j++) {
+        const a = age / 150 + j * 2.1;
+        ctx.fillText('✦', p.rx + Math.cos(a) * 16, p.ry - 52 + Math.sin(a) * 5);
+      }
+      ctx.globalAlpha = 1;
+    }
+  }
 }
 
 function drawTopic(c) {
