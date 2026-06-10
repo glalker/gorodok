@@ -42,10 +42,12 @@ WASD / стрелки — ходить, Enter — чат, джойстик на 
 теста с друзьями нужен хостинг с https. GitHub Pages не подходит (статика без
 WebSocket), зато подходит Render:
 
-1. Залей репозиторий на GitHub.
-2. Зайди на [render.com](https://render.com) → **New → Blueprint** → выбери этот
-   репозиторий. Конфиг подхватится из `render.yaml` автоматически.
-3. Через пару минут получишь ссылку вида `https://gorodok.onrender.com` —
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/glalker/gorodok)
+
+1. Нажми кнопку выше (или: [render.com](https://render.com) → **New →
+   Blueprint** → репозиторий `glalker/gorodok`). Конфиг подхватится из
+   `render.yaml` автоматически.
+2. Через пару минут получишь ссылку вида `https://gorodok.onrender.com` —
    кидай друзьям. Голос и «городок рядом» (геолокация) заработают.
 
 На бесплатном тарифе Render сервер засыпает после 15 минут тишины — первый
