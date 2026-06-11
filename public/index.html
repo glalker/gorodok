@@ -14,11 +14,11 @@
     <p class="tagline">Поле, стикмены и болтовня с теми, кто рядом.<br>Подойди ближе — услышишь. Отойди — тишина.</p>
     <input id="nameInput" maxlength="24" placeholder="Имя (можно пусто — придумаем)">
     <input id="statusInput" maxlength="90" placeholder="Статус, например: блондинка в синем, ищу с кем покатать">
-    <div class="room-row">
-      <input id="roomInput" maxlength="48" placeholder="Городок" list="roomList">
-      <datalist id="roomList"></datalist>
-    </div>
+    <p class="rooms-hint">👇 Обязательно выбери городок (или впиши своё название — появится новый):</p>
     <div id="roomsOnline" class="rooms-online"></div>
+    <div class="room-row">
+      <input id="roomInput" maxlength="48" placeholder="…или название нового городка">
+    </div>
     <label class="radius-row">📢 Тебя слышно на <b><span id="radiusVal">8</span> м</b>
       <input type="range" id="radiusInput" min="1" max="10" value="8">
     </label>
@@ -47,7 +47,12 @@
   </form>
 
   <div id="joystick" hidden><div id="stick"></div></div>
-  <button id="jumpBtn" hidden title="Прыжок">⬆️</button>
+  <div id="actions" hidden>
+    <button id="jumpBtn" class="actBtn" title="Прыжок">⬆️</button>
+    <button id="rollBtn" class="actBtn" title="Перекат">💨</button>
+    <button id="punchBtn" class="actBtn" title="Удар рукой">🤜</button>
+    <button id="kickBtn" class="actBtn" title="Удар ногой">🦵</button>
+  </div>
 </div>
 
 <script src="app.js"></script>

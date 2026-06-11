@@ -16,6 +16,12 @@ const THROW_SPEED = 480;      // скорость камня, px/s
 const THROW_MAX = 9 * 32;     // дальность броска — 9 м
 const THROW_COOLDOWN = 1100;  // пауза между бросками
 const STONE_HIT_R = 26;       // радиус попадания
+const PUNCH_RANGE = 32;       // дальность удара рукой
+const KICK_RANGE = 42;        // дальность удара ногой
+const PUNCH_CD = 450;
+const KICK_CD = 750;
+const ROLL_MS = 300;          // длительность переката (в это время неуязвим)
+const ROLL_CD = 900;
 const TOPIC_INTERVAL = 7000;  // как часто пересчитываем группы и темы
 const CHAT_TTL = 90_000;      // сколько сообщения учитываются в теме беседы
 const DEFAULT_ROOM = 'Городок';
@@ -145,6 +151,10 @@ wss.on('connection', ws => {
         radius: radiusPx(m.radius),
         jumpUntil: 0,
         lastThrow: 0,
+        rollUntil: 0,
+        lastRoll: 0,
+        lastPunch: 0,
+        lastKick: 0,
         ws,
       };
       room.players.set(me.id, me);
@@ -201,11 +211,46 @@ wss.on('connection', ws => {
           for (const p of theRoom.players.values()) {
             if (p.id === throwerId) continue;
             if (Math.hypot(p.x - tx, p.y - ty) <= STONE_HIT_R) {
-              if (p.jumpUntil > landAt) broadcast(theRoom, { t: 'dodge', id: p.id, by: throwerId });
-              else broadcast(theRoom, { t: 'hit', id: p.id, by: throwerId, x: tx, y: ty });
+              if (p.jumpUntil > landAt || p.rollUntil > landAt) broadcast(theRoom, { t: 'dodge', id: p.id, by: throwerId });
+              else broadcast(theRoom, { t: 'hit', id: p.id, by: throwerId, x: tx, y: ty, kind: 'stone' });
             }
           }
         }, ms);
+        break;
+      }
+      case 'roll': {
+        const now = Date.now();
+        if (now - me.lastRoll < ROLL_CD) break;
+        me.lastRoll = now;
+        me.rollUntil = now + ROLL_MS;
+        broadcast(room, { t: 'roll', id: me.id, dx: +m.dx || 0, dy: +m.dy || 0 }, me.id);
+        break;
+      }
+      case 'punch':
+      case 'kick': {
+        const now = Date.now();
+        const kind = m.t;
+        if (kind === 'punch') {
+          if (now - me.lastPunch < PUNCH_CD) break;
+          me.lastPunch = now;
+        } else {
+          if (now - me.lastKick < KICK_CD) break;
+          me.lastKick = now;
+        }
+        const range = kind === 'punch' ? PUNCH_RANGE : KICK_RANGE;
+        let victim = null, best = Infinity;
+        for (const p of room.players.values()) {
+          if (p.id === me.id) continue;
+          const dd = dist(p, me);
+          if (dd <= range && dd < best) { best = dd; victim = p; }
+        }
+        const ang = victim ? Math.atan2(victim.y - me.y, victim.x - me.x) : (+m.ang || 0);
+        broadcast(room, { t: 'melee', id: me.id, kind, ang });
+        if (victim) {
+          // перекат уворачивает от ударов (прыжок — только от камней)
+          if (victim.rollUntil > now) broadcast(room, { t: 'dodge', id: victim.id, by: me.id });
+          else broadcast(room, { t: 'hit', id: victim.id, by: me.id, x: me.x, y: me.y, kind });
+        }
         break;
       }
       case 'status':

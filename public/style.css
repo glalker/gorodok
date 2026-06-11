@@ -22,7 +22,14 @@ body { background: #7cb860; }
 }
 .card input:focus { outline: none; border-color: #6aa84f; }
 .room-row { display: flex; gap: 8px; }
-.rooms-online { font-size: 12px; color: #7a8a6f; min-height: 14px; }
+.rooms-hint { font-size: 13px; color: #3c4a33; font-weight: 600; }
+.rooms-online { display: flex; flex-wrap: wrap; gap: 6px; min-height: 14px; }
+.room-chip {
+  padding: 7px 12px !important; border-radius: 999px !important;
+  background: #e8efe0 !important; color: #3c4a33 !important;
+  font-size: 14px !important; border: 2px solid transparent !important;
+}
+.room-chip.sel { border-color: #5d9e4a !important; background: #d7e8c9 !important; font-weight: 700; }
 .card button {
   padding: 12px; border: none; border-radius: 10px; font-size: 15px;
   cursor: pointer; background: #e8efe0; color: #3c4a33;
@@ -81,12 +88,17 @@ body { background: #7cb860; }
   border-radius: 50%; background: rgba(255,255,255,.25);
   border: 2px solid rgba(255,255,255,.5); z-index: 10; touch-action: none;
 }
-#jumpBtn {
-  position: fixed; right: 26px; bottom: 100px; width: 64px; height: 64px;
-  border-radius: 50%; border: 2px solid rgba(255,255,255,.5);
-  background: rgba(255,255,255,.35); font-size: 26px; z-index: 10;
+#actions {
+  position: fixed; right: 18px; bottom: 90px; z-index: 10;
+  display: grid; grid-template-columns: 60px 60px; gap: 12px;
+}
+.actBtn {
+  width: 60px; height: 60px; border-radius: 50%;
+  border: 2px solid rgba(255,255,255,.5);
+  background: rgba(255,255,255,.35); font-size: 24px;
   touch-action: none;
 }
+.actBtn:active { background: rgba(255,255,255,.7); }
 #stick {
   position: absolute; left: 35px; top: 35px; width: 40px; height: 40px;
   border-radius: 50%; background: rgba(255,255,255,.85);

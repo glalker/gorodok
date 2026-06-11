@@ -19,15 +19,24 @@ const ctx = cv.getContext('2d');
 const isTouch = 'ontouchstart' in window;
 
 // ---------- экран входа ----------
-fetch('/rooms').then(r => r.json()).then(list => {
-  const dl = $('roomList');
-  dl.innerHTML = list.map(r => `<option value="${escapeHtml(r.name)}">`).join('');
-  const online = list.filter(r => r.count > 0);
-  if (online.length) {
-    $('roomsOnline').textContent = 'Сейчас живые городки: ' +
-      online.map(r => `${r.name} (${r.count})`).join(', ');
+fetch('/rooms').then(r => r.json()).then(renderRooms).catch(() => {});
+
+function renderRooms(list) {
+  const box = $('roomsOnline');
+  box.innerHTML = '';
+  for (const r of list) {
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.className = 'room-chip';
+    chip.textContent = r.count > 0 ? `${r.name} · ${r.count} 🟢` : r.name;
+    chip.onclick = () => {
+      $('roomInput').value = r.name;
+      box.querySelectorAll('.room-chip').forEach(c => c.classList.remove('sel'));
+      chip.classList.add('sel');
+    };
+    box.appendChild(chip);
   }
-}).catch(() => {});
+}
 
 $('joinBtn').onclick = () => join($('roomInput').value.trim() || 'Городок');
 
@@ -125,24 +134,38 @@ function handleMsg(m) {
     case 'throw':
       stones.push({ ...m, t0: performance.now() });
       break;
+    case 'roll': {
+      const p = players.get(m.id);
+      if (p) { p.rollStart = performance.now(); p.rollDir = (m.dx || 1) >= 0 ? 1 : -1; }
+      break;
+    }
+    case 'melee': {
+      const p = players.get(m.id);
+      if (p) { p.meleeAt = performance.now(); p.meleeKind = m.kind; p.meleeAng = m.ang; }
+      break;
+    }
     case 'hit': {
       const p = players.get(m.id);
       const by = players.get(m.by);
       if (p) p.hitAt = performance.now();
       effects.push({ type: 'stars', id: m.id, at: performance.now() });
-      if (p && by) logLine(`🪨 ${by.name} попал в ${p.name}!`);
+      const icon = m.kind === 'punch' ? '🤜' : m.kind === 'kick' ? '🦵' : '🪨';
+      if (p && by) logLine(`${icon} ${by.name} попал в ${p.name}!`);
       if (m.id === myId && p) {
-        myStunnedUntil = performance.now() + 800;
+        const stunMs = m.kind === 'punch' ? 400 : m.kind === 'kick' ? 700 : 800;
+        const push = m.kind === 'punch' ? 26 : m.kind === 'kick' ? 46 : 38;
+        myStunnedUntil = performance.now() + stunMs;
+        rolling = null;
         const d = Math.hypot(p.x - m.x, p.y - m.y) || 1;
-        p.x = Math.max(0, Math.min(world.w, p.x + (p.x - m.x) / d * 38));
-        p.y = Math.max(0, Math.min(world.h, p.y + (p.y - m.y) / d * 38));
+        p.x = Math.max(0, Math.min(world.w, p.x + (p.x - m.x) / d * push));
+        p.y = Math.max(0, Math.min(world.h, p.y + (p.y - m.y) / d * push));
         ws.send(JSON.stringify({ t: 'move', x: p.x, y: p.y }));
       }
       break;
     }
     case 'dodge': {
       const p = players.get(m.id);
-      if (p) logLine(`😎 ${p.name} увернулся в прыжке!`);
+      if (p) logLine(`😎 ${p.name} увернулся!`);
       break;
     }
     case 'clusters':
@@ -169,21 +192,28 @@ function startGame() {
   updateOnline();
   if (isTouch) {
     $('joystick').hidden = false;
-    $('jumpBtn').hidden = false;
+    $('actions').hidden = false;
   }
   logLine(isTouch
-    ? 'Тап по полю — бросить камень 🪨, кнопка ⬆️ — прыжок'
-    : 'Пробел — прыжок, клик по полю — бросить камень 🪨');
+    ? 'Кнопки: ⬆️ прыжок, 💨 перекат, 🤜🦵 удары. Тап по полю — камень 🪨'
+    : 'Пробел — прыжок, Shift — перекат, J/K — удары, клик по полю — камень 🪨');
   resize();
   buildDecor();
   requestAnimationFrame(frame);
 }
 
-$('jumpBtn').addEventListener('pointerdown', e => {
-  e.preventDefault();
-  e.stopPropagation();
-  doJump();
-});
+for (const [btnId, fn] of [
+  ['jumpBtn', doJump],
+  ['rollBtn', doRoll],
+  ['punchBtn', () => doMelee('punch')],
+  ['kickBtn', () => doMelee('kick')],
+]) {
+  $(btnId).addEventListener('pointerdown', e => {
+    e.preventDefault();
+    e.stopPropagation();
+    fn();
+  });
+}
 
 function updateOnline() {
   $('onlineLabel').textContent = `онлайн: ${players.size}`;
@@ -214,7 +244,10 @@ addEventListener('keydown', e => {
     return;
   }
   if (e.key === 'Enter') { $('chatInput').focus(); e.preventDefault(); return; }
-  if (e.code === 'Space') { doJump(); e.preventDefault(); return; }
+  if (e.code === 'Space') { if (!e.repeat) doJump(); e.preventDefault(); return; }
+  if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') { if (!e.repeat) doRoll(); e.preventDefault(); return; }
+  if (e.code === 'KeyJ') { if (!e.repeat) doMelee('punch'); e.preventDefault(); return; }
+  if (e.code === 'KeyK') { if (!e.repeat) doMelee('kick'); e.preventDefault(); return; }
   const dir = KEYMAP[e.code];
   if (dir) { keys[dir] = true; e.preventDefault(); }
 });
@@ -245,13 +278,42 @@ function joyMove(e) {
   stick.style.top = (35 + dy) + 'px';
 }
 
-// ---------- прыжок и камни ----------
+// ---------- прыжок, перекат, удары, камни ----------
 function doJump() {
   const p = me();
   if (!p || !ws) return;
   if (p.jumpStart && performance.now() - p.jumpStart < 650) return;
   p.jumpStart = performance.now();
   ws.send(JSON.stringify({ t: 'jump' }));
+}
+
+let rolling = null; // {until, dx, dy}
+let lastRollSent = -9999;
+let lastDir = { x: 1, y: 0 }; // куда смотрим — для переката с места
+function doRoll() {
+  const p = me();
+  if (!p || !ws) return;
+  const now = performance.now();
+  if (now - lastRollSent < 900) return;
+  lastRollSent = now;
+  let dx = (keys.right ? 1 : 0) - (keys.left ? 1 : 0) + joyVec.x;
+  let dy = (keys.down ? 1 : 0) - (keys.up ? 1 : 0) + joyVec.y;
+  const len = Math.hypot(dx, dy);
+  if (len < 0.05) { dx = lastDir.x; dy = lastDir.y; }
+  else { dx /= len; dy /= len; }
+  rolling = { until: now + 300, dx, dy };
+  p.rollStart = now;
+  p.rollDir = dx >= 0 ? 1 : -1;
+  ws.send(JSON.stringify({ t: 'roll', dx, dy }));
+}
+
+const meleeCd = { punch: -9999, kick: -9999 };
+function doMelee(kind) {
+  if (!me() || !ws) return;
+  const now = performance.now();
+  if (now - meleeCd[kind] < (kind === 'punch' ? 450 : 750)) return;
+  meleeCd[kind] = now;
+  ws.send(JSON.stringify({ t: kind, ang: Math.atan2(lastDir.y, lastDir.x) }));
 }
 
 let lastThrowSent = -9999;
@@ -268,17 +330,33 @@ let lastSent = 0;
 function updateMovement(dt) {
   const p = me();
   if (!p) return;
-  if (performance.now() < myStunnedUntil) return; // оглушён камнем
+  const now = performance.now();
+  // рывок переката
+  if (rolling) {
+    if (now < rolling.until) {
+      const ROLL_SPEED = 420;
+      p.x = Math.max(0, Math.min(world.w, p.x + rolling.dx * ROLL_SPEED * dt));
+      p.y = Math.max(0, Math.min(world.h, p.y + rolling.dy * ROLL_SPEED * dt));
+      if (now - lastSent > 70) {
+        lastSent = now;
+        ws.send(JSON.stringify({ t: 'move', x: p.x, y: p.y }));
+      }
+      return;
+    }
+    rolling = null;
+    ws.send(JSON.stringify({ t: 'move', x: p.x, y: p.y }));
+  }
+  if (now < myStunnedUntil) return; // оглушён
   let dx = (keys.right ? 1 : 0) - (keys.left ? 1 : 0);
   let dy = (keys.down ? 1 : 0) - (keys.up ? 1 : 0);
   dx += joyVec.x; dy += joyVec.y;
   const len = Math.hypot(dx, dy);
   if (len > 1) { dx /= len; dy /= len; }
   if (len > 0.05) {
+    lastDir = { x: dx / (len > 1 ? 1 : len || 1), y: dy / (len > 1 ? 1 : len || 1) };
     const SPEED = 230;
     p.x = Math.max(0, Math.min(world.w, p.x + dx * SPEED * dt));
     p.y = Math.max(0, Math.min(world.h, p.y + dy * SPEED * dt));
-    const now = performance.now();
     if (now - lastSent > 70) {
       lastSent = now;
       ws.send(JSON.stringify({ t: 'move', x: p.x, y: p.y }));
@@ -597,6 +675,13 @@ function drawPlayer(p, t) {
     if (jk < 1) z = Math.sin(Math.PI * jk) * 26;
     else p.jumpStart = 0;
   }
+  // фаза переката (кувырок)
+  let rollK = 0;
+  if (p.rollStart) {
+    const rk = (t - p.rollStart) / 300;
+    if (rk < 1) rollK = rk;
+    else p.rollStart = 0;
+  }
   const y = p.ry - z;       // тело в воздухе
   const gy = p.ry;          // тень на земле
 
@@ -616,6 +701,14 @@ function drawPlayer(p, t) {
   ctx.strokeStyle = c;
   ctx.lineWidth = 3;
   ctx.lineCap = 'round';
+  // кувырок: вращаем тело вокруг центра
+  if (rollK) {
+    ctx.save();
+    const rcx = x, rcy = y - 19;
+    ctx.translate(rcx, rcy);
+    ctx.rotate(rollK * Math.PI * 2 * (p.rollDir || 1));
+    ctx.translate(-rcx, -rcy);
+  }
   // ноги
   ctx.beginPath();
   ctx.moveTo(x, y - 14); ctx.lineTo(x - legSpread + swing * 0.5, y - (z > 2 ? 4 : 0));
@@ -631,6 +724,26 @@ function drawPlayer(p, t) {
     ctx.lineTo(x + 9, y - 22 - swing * 0.4);
   }
   ctx.stroke();
+  // удар рукой/ногой: конечность выбрасывается в сторону цели
+  if (p.meleeAt && t - p.meleeAt < 220) {
+    const mk = (t - p.meleeAt) / 220;
+    const ext = Math.sin(mk * Math.PI);
+    const ang = p.meleeAng || 0;
+    ctx.beginPath();
+    ctx.lineWidth = 4;
+    if (p.meleeKind === 'punch') {
+      const len = 12 + 12 * ext;
+      ctx.moveTo(x, y - 26);
+      ctx.lineTo(x + Math.cos(ang) * len, y - 26 + Math.sin(ang) * len * 0.5);
+    } else {
+      const len = 14 + 16 * ext;
+      ctx.moveTo(x, y - 14);
+      ctx.lineTo(x + Math.cos(ang) * len, y - 10 + Math.sin(ang) * len * 0.5);
+    }
+    ctx.stroke();
+    ctx.lineWidth = 3;
+  }
+
   // голова
   ctx.beginPath();
   ctx.fillStyle = '#ffe3c2';
@@ -638,7 +751,9 @@ function drawPlayer(p, t) {
   ctx.fill();
   ctx.stroke();
 
-  // вспышка от попадания камнем
+  if (rollK) ctx.restore();
+
+  // вспышка от попадания
   if (p.hitAt && t - p.hitAt < 450) {
     ctx.font = '18px system-ui';
     ctx.textAlign = 'center';
